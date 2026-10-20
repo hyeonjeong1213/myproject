@@ -1,0 +1,91 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="블로그 방문자들의 이야기를 남기는 실시간 방명록">
+  <title>방명록 | My Portfolio</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <header class="site-header">
+    <a href="./" class="logo">MY PORTFOLIO<span>.</span></a>
+    <nav>
+      <a href="./">홈</a>
+      <a href="#guestbook">방명록</a>
+    </nav>
+  </header>
+
+  <main id="guestbook" class="container">
+    <section class="intro">
+      <p class="eyebrow">GUESTBOOK</p>
+      <h1>방명록</h1>
+      <p class="description">
+        방문해 주셔서 감사합니다.<br>
+        자유롭게 메시지를 남겨 주세요!
+      </p>
+    </section>
+
+    <section class="write-card">
+      <h2>메시지 남기기</h2>
+
+      <form id="guestbook-form">
+        <label for="name">이름</label>
+        <input
+          id="name"
+          name="name"
+          type="text"
+          maxlength="30"
+          placeholder="이름을 입력해 주세요"
+          required
+        >
+
+        <div class="message-heading">
+          <label for="message">메시지</label>
+          <span id="char-count">0 / 500</span>
+        </div>
+
+        <textarea
+          id="message"
+          name="message"
+          maxlength="500"
+          rows="5"
+          placeholder="따뜻한 한마디를 남겨 주세요."
+          required
+        ></textarea>
+
+        <button id="submit-button" type="submit">
+          방명록 등록하기 <span>→</span>
+        </button>
+
+        <p id="form-status" class="status" role="status"
+           aria-live="polite"></p>
+      </form>
+    </section>
+
+    <section class="list-section">
+      <div class="list-heading">
+        <div>
+          <p class="eyebrow">VISITOR MESSAGES</p>
+          <h2>방문자 메시지 <span id="message-count">0</span></h2>
+        </div>
+        <button id="refresh-button" class="refresh-button" type="button">
+          ↻ 새로고침
+        </button>
+      </div>
+
+      <p id="list-status" class="list-status" aria-live="polite">
+        방명록을 불러오는 중입니다.
+      </p>
+
+      <div id="message-list" class="message-list"></div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Made with care · My Portfolio</p>
+  </footer>
+</body>
+</html>
