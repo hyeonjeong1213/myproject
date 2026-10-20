@@ -1,0 +1,161 @@
+
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>버스 도착 알림 봇</title>
+  <style>
+    body {
+      max-width: 620px;
+      margin: 40px auto;
+      padding: 20px;
+      font-family: Arial, sans-serif;
+      background: #f4f7fb;
+      color: #202b3c;
+    }
+    main {
+      background: white;
+      padding: 24px;
+      border-radius: 16px;
+    }
+    label { display: block; margin-top: 14px; }
+    input, button {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 12px;
+      margin-top: 6px;
+      border-radius: 8px;
+    }
+    input { border: 1px solid #ccd3df; }
+    button {
+      border: 0;
+      background: #315de8;
+      color: white;
+      cursor: pointer;
+    }
+    pre { white-space: pre-wrap; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>🚌 버스 도착 알림 봇</h1>
+  <p>정류소와 버스 번호를 입력해 도착정보를 조회하세요.</p>
+
+  <label>정류소 고유번호
+    <input id="stationId" placeholder="예: 06001" maxlength="5">
+  </label>
+
+  <label>버스 번호
+    <input id="busNumber" placeholder="예: 130">
+  </label>
+
+  <button id="searchBtn">도착정보 조회</button>
+  <pre id="result">조회 결과가 여기에 표시됩니다.</pre>
+
+  <hr>
+  <h2>자동 문자 알림 설정</h2>
+
+  <label>등교 알림 시간
+    <input id="schoolTime" type="time" value="07:45">
+  </label>
+
+  <label>하교 알림 시간
+    <input id="homeTime" type="time" value="17:15">
+  </label>
+
+  <button id="saveBtn">설정 저장 및 자동 알림 등록</button>
+  <p id="status"></p>
+</main>
+
+<script>
+  const GAS_URL = '여기에_GAS_웹앱_URL을_입력하세요';
+
+  function callGAS(params) {
+    return new Promise((resolve, reject) => {
+      const callback = 'gasCallback_' + Date.now()
+        + '_' + Math.floor(Math.random() * 10000);
+
+      const script = document.createElement('script');
+      const query = new URLSearchParams({
+        ...params,
+        callback
+      });
+
+      const timeout = setTimeout(() => {
+        cleanup();
+        reject(new Error('요청 시간이 초과되었습니다.'));
+      }, 20000);
+
+      function cleanup() {
+        clearTimeout(timeout);
+        delete window[callback];
+        script.remove();
+      }
+
+      window[callback] = data => {
+        cleanup();
+        resolve(data);
+      };
+
+      script.onerror = () => {
+        cleanup();
+        reject(new Error('GAS 서버에 연결하지 못했습니다.'));
+      };
+
+      script.src = GAS_URL + '?' + query.toString();
+      document.body.appendChild(script);
+    });
+  }
+
+  document.getElementById('searchBtn').addEventListener('click', async () => {
+    const result = document.getElementById('result');
+    result.textContent = '조회 중입니다...';
+
+    try {
+      const data = await callGAS({
+        action: 'bus',
+        stationId: document.getElementById('stationId').value.trim(),
+        busNumber: document.getElementById('busNumber').value.trim()
+      });
+
+      if (!data.ok) throw new Error(data.message);
+
+      if (data.matches.length === 0) {
+        result.textContent = '해당 버스 정보를 찾지 못했습니다.\n'
+          + JSON.stringify(data.buses, null, 2);
+        return;
+      }
+
+      result.textContent = data.matches.map(bus =>
+        bus.busNumber + '번\n'
+        + '첫 번째 도착: ' + bus.firstArrival + '\n'
+        + '두 번째 도착: ' + bus.secondArrival
+      ).join('\n\n');
+    } catch (error) {
+      result.textContent = '오류: ' + error.message;
+    }
+  });
+
+  document.getElementById('saveBtn').addEventListener('click', async () => {
+    const status = document.getElementById('status');
+    status.textContent = '설정 저장 중...';
+
+    try {
+      const data = await callGAS({
+        action: 'save',
+        stationId: document.getElementById('stationId').value.trim(),
+        busNumber: document.getElementById('busNumber').value.trim(),
+        schoolTime: document.getElementById('schoolTime').value,
+        homeTime: document.getElementById('homeTime').value
+      });
+
+      status.textContent = data.message;
+      if (!data.ok) throw new Error(data.message);
+    } catch (error) {
+      status.textContent = '오류: ' + error.message;
+    }
+  });
+</script>
+</body>
+</html>
