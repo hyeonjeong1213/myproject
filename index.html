@@ -4,158 +4,205 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>버스 도착 알림 봇</title>
+  <title>버스 도착 알림</title>
   <style>
+    * { box-sizing: border-box; }
     body {
-      max-width: 620px;
-      margin: 40px auto;
-      padding: 20px;
+      margin: 0;
       font-family: Arial, sans-serif;
-      background: #f4f7fb;
-      color: #202b3c;
+      background: #f3f6fb;
+      color: #202938;
     }
     main {
-      background: white;
+      max-width: 700px;
+      margin: 50px auto;
       padding: 24px;
-      border-radius: 16px;
     }
-    label { display: block; margin-top: 14px; }
-    input, button {
-      box-sizing: border-box;
-      width: 100%;
+    h1 { margin-bottom: 8px; }
+    .description { color: #667085; }
+    .search-box, .result {
+      background: white;
+      border-radius: 14px;
+      padding: 20px;
+      margin-top: 20px;
+      box-shadow: 0 3px 14px #1822300d;
+    }
+    label { display: block; margin-bottom: 8px; font-weight: bold; }
+    .search-row { display: flex; gap: 8px; }
+    input {
+      flex: 1;
+      min-width: 0;
       padding: 12px;
-      margin-top: 6px;
+      border: 1px solid #cbd5e1;
       border-radius: 8px;
+      font-size: 16px;
     }
-    input { border: 1px solid #ccd3df; }
     button {
+      padding: 12px 18px;
       border: 0;
-      background: #315de8;
+      border-radius: 8px;
+      background: #2563eb;
       color: white;
+      font-size: 15px;
       cursor: pointer;
     }
-    pre { white-space: pre-wrap; }
+    button:disabled { opacity: .6; cursor: wait; }
+    .bus {
+      padding: 16px 0;
+      border-bottom: 1px solid #e5e7eb;
+    }
+    .bus:last-child { border-bottom: 0; }
+    .bus-number { font-size: 20px; font-weight: bold; }
+    .arrival { margin-top: 8px; line-height: 1.7; }
+    .status { color: #475569; margin-top: 14px; }
+    .error { color: #b42318; }
+    .updated { color: #667085; font-size: 13px; margin-top: 12px; }
+    @media (max-width: 480px) {
+      main { margin: 20px auto; padding: 16px; }
+      .search-row { flex-direction: column; }
+    }
   </style>
 </head>
 <body>
 <main>
-  <h1>🚌 버스 도착 알림 봇</h1>
-  <p>정류소와 버스 번호를 입력해 도착정보를 조회하세요.</p>
+  <h1>🚌 버스 도착 알림</h1>
+  <p class="description">
+    정류소 고유번호를 입력하면 버스 도착정보를 확인할 수 있어요.
+  </p>
 
-  <label>정류소 고유번호
-    <input id="stationId" placeholder="예: 06001" maxlength="5">
-  </label>
+  <section class="search-box">
+    <label for="stationId">정류소 고유번호 (ARS ID)</label>
+    <div class="search-row">
+      <input id="stationId" type="text"
+             inputmode="numeric" placeholder="예: 02132">
+      <button id="searchButton" type="button">조회하기</button>
+    </div>
+    <p class="description">서울시 정류소 번호를 입력해 주세요.</p>
+  </section>
 
-  <label>버스 번호
-    <input id="busNumber" placeholder="예: 130">
-  </label>
-
-  <button id="searchBtn">도착정보 조회</button>
-  <pre id="result">조회 결과가 여기에 표시됩니다.</pre>
-
-  <hr>
-  <h2>자동 문자 알림 설정</h2>
-
-  <label>등교 알림 시간
-    <input id="schoolTime" type="time" value="07:45">
-  </label>
-
-  <label>하교 알림 시간
-    <input id="homeTime" type="time" value="17:15">
-  </label>
-
-  <button id="saveBtn">설정 저장 및 자동 알림 등록</button>
-  <p id="status"></p>
+  <section class="result" aria-live="polite">
+    <h2>실시간 도착정보</h2>
+    <div id="results">정류소 번호를 입력하고 조회해 주세요.</div>
+    <div id="updated" class="updated"></div>
+  </section>
 </main>
 
 <script>
+  // GAS 웹 앱 배포 후 실제 URL로 교체하세요.
   const GAS_URL = '여기에_GAS_웹앱_URL을_입력하세요';
 
-  function callGAS(params) {
-    return new Promise((resolve, reject) => {
-      const callback = 'gasCallback_' + Date.now()
-        + '_' + Math.floor(Math.random() * 10000);
+  const stationInput = document.getElementById('stationId');
+  const searchButton = document.getElementById('searchButton');
+  const results = document.getElementById('results');
+  const updated = document.getElementById('updated');
 
-      const script = document.createElement('script');
-      const query = new URLSearchParams({
-        ...params,
-        callback
-      });
+  let requestTimer = null;
+  let requestId = 0;
 
-      const timeout = setTimeout(() => {
-        cleanup();
-        reject(new Error('요청 시간이 초과되었습니다.'));
-      }, 20000);
+  searchButton.addEventListener('click', searchBus);
+  stationInput.addEventListener('keydown', function(event) {
+    if (event.key === 'Enter') searchBus();
+  });
 
-      function cleanup() {
-        clearTimeout(timeout);
-        delete window[callback];
-        script.remove();
-      }
+  function searchBus() {
+    const stationId = stationInput.value.trim();
 
-      window[callback] = data => {
-        cleanup();
-        resolve(data);
-      };
+    if (!/^\d{4,6}$/.test(stationId)) {
+      results.textContent = '정류소 번호를 숫자 4~6자리로 입력해 주세요.';
+      updated.textContent = '';
+      return;
+    }
 
-      script.onerror = () => {
-        cleanup();
-        reject(new Error('GAS 서버에 연결하지 못했습니다.'));
-      };
+    if (!GAS_URL.startsWith('https://script.google.com/')) {
+      results.textContent = '먼저 GAS 웹 앱 URL을 코드에 입력해 주세요.';
+      return;
+    }
 
-      script.src = GAS_URL + '?' + query.toString();
-      document.body.appendChild(script);
-    });
-  }
+    const thisRequest = ++requestId;
+    searchButton.disabled = true;
+    results.textContent = '버스 도착정보를 조회하고 있습니다...';
+    updated.textContent = '';
 
-  document.getElementById('searchBtn').addEventListener('click', async () => {
-    const result = document.getElementById('result');
-    result.textContent = '조회 중입니다...';
+    // JSONP를 사용해 브라우저의 교차 출처 요청 제한을 피합니다.
+    const callbackName = 'busCallback_' + Date.now() + '_' + thisRequest;
+    const script = document.createElement('script');
+    let finished = false;
 
-    try {
-      const data = await callGAS({
-        action: 'bus',
-        stationId: document.getElementById('stationId').value.trim(),
-        busNumber: document.getElementById('busNumber').value.trim()
-      });
+    function cleanup() {
+      if (finished) return;
+      finished = true;
+      clearTimeout(requestTimer);
+      script.remove();
+      delete window[callbackName];
+      if (thisRequest === requestId) searchButton.disabled = false;
+    }
 
-      if (!data.ok) throw new Error(data.message);
+    window[callbackName] = function(data) {
+      cleanup();
+      if (thisRequest !== requestId) return;
 
-      if (data.matches.length === 0) {
-        result.textContent = '해당 버스 정보를 찾지 못했습니다.\n'
-          + JSON.stringify(data.buses, null, 2);
+      if (!data || !data.success) {
+        results.textContent =
+          data && data.message ? data.message : '정보를 가져오지 못했습니다.';
         return;
       }
 
-      result.textContent = data.matches.map(bus =>
-        bus.busNumber + '번\n'
-        + '첫 번째 도착: ' + bus.firstArrival + '\n'
-        + '두 번째 도착: ' + bus.secondArrival
-      ).join('\n\n');
-    } catch (error) {
-      result.textContent = '오류: ' + error.message;
+      renderBuses(data.items || []);
+      updated.textContent =
+        '조회 시각: ' + new Date().toLocaleTimeString('ko-KR');
+    };
+
+    script.onerror = function() {
+      cleanup();
+      if (thisRequest === requestId) {
+        results.textContent =
+          '서버에 연결하지 못했습니다. GAS URL과 배포 권한을 확인해 주세요.';
+      }
+    };
+
+    const params = new URLSearchParams({
+      stationId: stationId,
+      callback: callbackName
+    });
+
+    script.src = GAS_URL + '?' + params.toString();
+    document.body.appendChild(script);
+
+    requestTimer = setTimeout(function() {
+      cleanup();
+      if (thisRequest === requestId) {
+        results.textContent = '요청 시간이 초과되었습니다. 다시 시도해 주세요.';
+      }
+    }, 20000);
+  }
+
+  function renderBuses(items) {
+    results.replaceChildren();
+
+    if (!items.length) {
+      results.textContent = '해당 정류소의 버스 도착정보가 없습니다.';
+      return;
     }
-  });
 
-  document.getElementById('saveBtn').addEventListener('click', async () => {
-    const status = document.getElementById('status');
-    status.textContent = '설정 저장 중...';
+    items.forEach(function(bus) {
+      const card = document.createElement('div');
+      card.className = 'bus';
 
-    try {
-      const data = await callGAS({
-        action: 'save',
-        stationId: document.getElementById('stationId').value.trim(),
-        busNumber: document.getElementById('busNumber').value.trim(),
-        schoolTime: document.getElementById('schoolTime').value,
-        homeTime: document.getElementById('homeTime').value
-      });
+      const number = document.createElement('div');
+      number.className = 'bus-number';
+      number.textContent = (bus.busNumber || '번호 미확인') + '번 버스';
 
-      status.textContent = data.message;
-      if (!data.ok) throw new Error(data.message);
-    } catch (error) {
-      status.textContent = '오류: ' + error.message;
-    }
-  });
+      const arrival = document.createElement('div');
+      arrival.className = 'arrival';
+      arrival.textContent =
+        '첫 번째 도착: ' + (bus.firstArrival || '정보 없음') + '\n' +
+        '두 번째 도착: ' + (bus.secondArrival || '정보 없음');
+      arrival.style.whiteSpace = 'pre-line';
+
+      card.append(number, arrival);
+      results.appendChild(card);
+    });
+  }
 </script>
 </body>
 </html>
