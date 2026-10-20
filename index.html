@@ -7,19 +7,23 @@
   <title>버스 도착 알림</title>
   <style>
     * { box-sizing: border-box; }
+
     body {
       margin: 0;
       font-family: Arial, sans-serif;
       background: #f3f6fb;
       color: #202938;
     }
+
     main {
       max-width: 700px;
       margin: 50px auto;
       padding: 24px;
     }
+
     h1 { margin-bottom: 8px; }
     .description { color: #667085; }
+
     .search-box, .result {
       background: white;
       border-radius: 14px;
@@ -27,8 +31,15 @@
       margin-top: 20px;
       box-shadow: 0 3px 14px #1822300d;
     }
-    label { display: block; margin-bottom: 8px; font-weight: bold; }
+
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: bold;
+    }
+
     .search-row { display: flex; gap: 8px; }
+
     input {
       flex: 1;
       min-width: 0;
@@ -37,6 +48,7 @@
       border-radius: 8px;
       font-size: 16px;
     }
+
     button {
       padding: 12px 18px;
       border: 0;
@@ -46,23 +58,30 @@
       font-size: 15px;
       cursor: pointer;
     }
-    button:disabled { opacity: .6; cursor: wait; }
+
+    button:disabled {
+      opacity: .6;
+      cursor: wait;
+    }
+
     .bus {
       padding: 16px 0;
       border-bottom: 1px solid #e5e7eb;
     }
+
     .bus:last-child { border-bottom: 0; }
     .bus-number { font-size: 20px; font-weight: bold; }
     .arrival { margin-top: 8px; line-height: 1.7; }
-    .status { color: #475569; margin-top: 14px; }
-    .error { color: #b42318; }
     .updated { color: #667085; font-size: 13px; margin-top: 12px; }
+    .error { color: #b42318; }
+
     @media (max-width: 480px) {
       main { margin: 20px auto; padding: 16px; }
       .search-row { flex-direction: column; }
     }
   </style>
 </head>
+
 <body>
 <main>
   <h1>🚌 버스 도착 알림</h1>
@@ -72,11 +91,17 @@
 
   <section class="search-box">
     <label for="stationId">정류소 고유번호 (ARS ID)</label>
+
     <div class="search-row">
-      <input id="stationId" type="text"
-             inputmode="numeric" placeholder="예: 02132">
+      <input
+        id="stationId"
+        type="text"
+        inputmode="numeric"
+        placeholder="예: 02132"
+      >
       <button id="searchButton" type="button">조회하기</button>
     </div>
+
     <p class="description">서울시 정류소 번호를 입력해 주세요.</p>
   </section>
 
@@ -88,98 +113,110 @@
 </main>
 
 <script>
-  // GAS 웹 앱 배포 후 실제 URL로 교체하세요.
-  const GAS_URL = '여기에_GAS_웹앱_URL을_입력하세요';
+  // 공공데이터포털에서 발급받은 인증키를 입력하세요.
+  // 주의: 공개된 GitHub Pages에서는 인증키가 노출됩니다.
+  const SERVICE_KEY = '여기에_서울시_API_인증키를_입력하세요';
 
   const stationInput = document.getElementById('stationId');
   const searchButton = document.getElementById('searchButton');
   const results = document.getElementById('results');
   const updated = document.getElementById('updated');
 
-  let requestTimer = null;
-  let requestId = 0;
-
   searchButton.addEventListener('click', searchBus);
+
   stationInput.addEventListener('keydown', function(event) {
     if (event.key === 'Enter') searchBus();
   });
 
-  function searchBus() {
+  async function searchBus() {
     const stationId = stationInput.value.trim();
 
     if (!/^\d{4,6}$/.test(stationId)) {
-      results.textContent = '정류소 번호를 숫자 4~6자리로 입력해 주세요.';
-      updated.textContent = '';
+      showError('정류소 번호를 숫자 4~6자리로 입력해 주세요.');
       return;
     }
 
-    if (!GAS_URL.startsWith('https://script.google.com/')) {
-      results.textContent = '먼저 GAS 웹 앱 URL을 코드에 입력해 주세요.';
+    if (
+      !SERVICE_KEY ||
+      SERVICE_KEY === '여기에_서울시_API_인증키를_입력하세요'
+    ) {
+      showError('먼저 서울시 API 인증키를 설정해 주세요.');
       return;
     }
 
-    const thisRequest = ++requestId;
     searchButton.disabled = true;
     results.textContent = '버스 도착정보를 조회하고 있습니다...';
     updated.textContent = '';
 
-    // JSONP를 사용해 브라우저의 교차 출처 요청 제한을 피합니다.
-    const callbackName = 'busCallback_' + Date.now() + '_' + thisRequest;
-    const script = document.createElement('script');
-    let finished = false;
+    try {
+      const url =
+        'https://ws.bus.go.kr/api/rest/stationinfo/getStationByUid' +
+        '?ServiceKey=' + encodeURIComponent(SERVICE_KEY) +
+        '&arsId=' + encodeURIComponent(stationId);
 
-    function cleanup() {
-      if (finished) return;
-      finished = true;
-      clearTimeout(requestTimer);
-      script.remove();
-      delete window[callbackName];
-      if (thisRequest === requestId) searchButton.disabled = false;
-    }
+      const response = await fetch(url);
 
-    window[callbackName] = function(data) {
-      cleanup();
-      if (thisRequest !== requestId) return;
-
-      if (!data || !data.success) {
-        results.textContent =
-          data && data.message ? data.message : '정보를 가져오지 못했습니다.';
-        return;
+      if (!response.ok) {
+        throw new Error('API HTTP 상태: ' + response.status);
       }
 
-      renderBuses(data.items || []);
+      const xmlText = await response.text();
+      const xml = new DOMParser().parseFromString(
+        xmlText,
+        'application/xml'
+      );
+
+      if (xml.querySelector('parsererror')) {
+        throw new Error('API 응답을 XML로 해석하지 못했습니다.');
+      }
+
+      const errorCode = xml.querySelector('header > resultCode');
+      const errorMessage = xml.querySelector('header > resultMsg');
+
+      if (errorCode && !['0', '00'].includes(errorCode.textContent.trim())) {
+        throw new Error(
+          '서울시 API 오류: ' +
+          (errorMessage?.textContent || errorCode.textContent)
+        );
+      }
+
+      const items = Array.from(xml.getElementsByTagName('itemList'))
+        .map(function(item) {
+          return {
+            busNumber: getXmlText(item, 'rtNm'),
+            firstArrival: getXmlText(item, 'arrmsg1'),
+            secondArrival: getXmlText(item, 'arrmsg2')
+          };
+        });
+
+      renderBuses(items);
+
       updated.textContent =
-        '조회 시각: ' + new Date().toLocaleTimeString('ko-KR');
-    };
+        '정류소 번호: ' + stationId +
+        ' · 조회 시각: ' +
+        new Date().toLocaleTimeString('ko-KR');
 
-    script.onerror = function() {
-      cleanup();
-      if (thisRequest === requestId) {
-        results.textContent =
-          '서버에 연결하지 못했습니다. GAS URL과 배포 권한을 확인해 주세요.';
-      }
-    };
+    } catch (error) {
+      console.error(error);
 
-    const params = new URLSearchParams({
-      stationId: stationId,
-      callback: callbackName
-    });
+      showError(
+        '조회에 실패했습니다. 인증키, 정류소 번호, API 응답 및 CORS 설정을 확인해 주세요. ' +
+        '상세 내용: ' + error.message
+      );
+    } finally {
+      searchButton.disabled = false;
+    }
+  }
 
-    script.src = GAS_URL + '?' + params.toString();
-    document.body.appendChild(script);
-
-    requestTimer = setTimeout(function() {
-      cleanup();
-      if (thisRequest === requestId) {
-        results.textContent = '요청 시간이 초과되었습니다. 다시 시도해 주세요.';
-      }
-    }, 20000);
+  function getXmlText(element, tagName) {
+    const node = element.getElementsByTagName(tagName)[0];
+    return node ? node.textContent.trim() : '';
   }
 
   function renderBuses(items) {
     results.replaceChildren();
 
-    if (!items.length) {
+    if (items.length === 0) {
       results.textContent = '해당 정류소의 버스 도착정보가 없습니다.';
       return;
     }
@@ -190,7 +227,8 @@
 
       const number = document.createElement('div');
       number.className = 'bus-number';
-      number.textContent = (bus.busNumber || '번호 미확인') + '번 버스';
+      number.textContent =
+        (bus.busNumber || '번호 미확인') + '번 버스';
 
       const arrival = document.createElement('div');
       arrival.className = 'arrival';
@@ -202,6 +240,12 @@
       card.append(number, arrival);
       results.appendChild(card);
     });
+  }
+
+  function showError(message) {
+    results.textContent = message;
+    results.className = 'error';
+    updated.textContent = '';
   }
 </script>
 </body>
