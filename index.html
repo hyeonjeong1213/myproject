@@ -30,6 +30,7 @@
       padding: 20px;
       border-radius: 12px;
       box-shadow: 0 2px 8px #0001;
+      margin-bottom: 20px;
     }
 
     label {
@@ -47,20 +48,51 @@
     }
 
     button {
-      width: 100%;
-      margin-top: 18px;
-      padding: 13px;
+      padding: 12px;
       border: none;
       border-radius: 6px;
       background: #1769aa;
       color: white;
-      font-size: 16px;
+      font-size: 15px;
       cursor: pointer;
     }
 
     button:disabled {
       background: #999;
       cursor: wait;
+    }
+
+    .key-row,
+    .ars-row {
+      display: flex;
+      gap: 10px;
+      align-items: stretch;
+    }
+
+    .key-row input,
+    .ars-row input {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .key-row button,
+    .ars-row button {
+      flex-shrink: 0;
+      white-space: nowrap;
+    }
+
+    .key-row button {
+      margin-top: 0;
+    }
+
+    .ars-row button {
+      min-width: 100px;
+    }
+
+    #keyStatus {
+      margin-top: 10px;
+      font-size: 13px;
+      color: #16803c;
     }
 
     #result {
@@ -92,59 +124,179 @@
       color: #666;
       line-height: 1.6;
     }
+
+    @media (max-width: 420px) {
+      .key-row,
+      .ars-row {
+        flex-wrap: wrap;
+      }
+
+      .key-row button,
+      .ars-row button {
+        width: 100%;
+      }
+    }
   </style>
 </head>
 
 <body>
   <h1>🚌 서울 버스 도착정보</h1>
 
+  <!-- 인증키 설정 -->
   <div class="search-box">
+    <h2>API 인증키 설정</h2>
+
     <label for="serviceKey">공공데이터 API 인증키</label>
-    <input
-      type="password"
-      id="serviceKey"
-      placeholder="발급받은 인증키를 입력하세요"
-      autocomplete="off"
-    >
 
-    <label for="arsId">정류소 고유번호</label>
-    <input
-      type="text"
-      id="arsId"
-      placeholder="예: 02150"
-      inputmode="numeric"
-    >
+    <div class="key-row">
+      <input
+        type="password"
+        id="serviceKey"
+        placeholder="발급받은 인증키 입력"
+        autocomplete="off"
+      >
 
-    <button id="searchButton" onclick="searchBus()">
-      버스 도착정보 조회
+      <button type="button" onclick="saveKey()">
+        인증키 저장
+      </button>
+    </div>
+
+    <div id="keyStatus" aria-live="polite"></div>
+
+    <button
+      type="button"
+      onclick="deleteKey()"
+      style="margin-top: 10px; background: #777;"
+    >
+      저장된 인증키 삭제
     </button>
 
     <p class="notice">
-      인증키는 페이지에 직접 입력합니다.
-      정류소 고유번호는 버스 정류장 안내판에서 확인할 수 있습니다.
+      인증키는 이 브라우저에 저장됩니다.
+      공용 컴퓨터에서는 저장하지 마세요.
     </p>
   </div>
 
-  <div id="result" aria-live="polite"></div>
+  <!-- 정류소 검색 -->
+  <div class="search-box">
+    <label for="arsId">정류소 고유번호 (ARS ID)</label>
+
+    <div class="ars-row">
+      <input
+        type="text"
+        id="arsId"
+        placeholder="예: 06001"
+        inputmode="numeric"
+      >
+
+      <button
+        type="button"
+        id="searchButton"
+        onclick="searchBus()"
+      >
+        조회하기
+      </button>
+    </div>
+
+    <p class="notice">
+      서울시 정류소 번호를 입력해 주세요.
+    </p>
+  </div>
+
+  <!-- 도착정보 -->
+  <div class="search-box">
+    <h2>실시간 도착정보</h2>
+    <div id="result" aria-live="polite">
+      먼저 인증키를 설정해 주세요.
+    </div>
+  </div>
 
   <script>
-    async function searchBus() {
-      const serviceKey =
-        document.getElementById("serviceKey").value.trim();
+    const KEY_STORAGE = "seoulBusServiceKey";
 
-      const arsId =
-        document.getElementById("arsId").value.trim();
+    // 페이지를 열면 저장된 인증키 불러오기
+    window.addEventListener("DOMContentLoaded", () => {
+      const savedKey = localStorage.getItem(KEY_STORAGE);
+
+      if (savedKey) {
+        document.getElementById("serviceKey").value = savedKey;
+        document.getElementById("keyStatus").textContent =
+          "인증키가 저장되어 있습니다.";
+        document.getElementById("result").textContent =
+          "정류소 번호를 입력하고 조회해 주세요.";
+      }
+    });
+
+    // 인증키 저장
+    function saveKey() {
+      const key = document
+        .getElementById("serviceKey")
+        .value.trim();
+
+      const status = document.getElementById("keyStatus");
+
+      if (!key) {
+        status.style.color = "#d93025";
+        status.textContent = "인증키를 입력해 주세요.";
+        return;
+      }
+
+      try {
+        localStorage.setItem(KEY_STORAGE, key);
+        status.style.color = "#16803c";
+        status.textContent = "인증키가 저장되었습니다.";
+        document.getElementById("result").textContent =
+          "정류소 번호를 입력하고 조회해 주세요.";
+      } catch (error) {
+        status.style.color = "#d93025";
+        status.textContent =
+          "브라우저에 인증키를 저장할 수 없습니다.";
+      }
+    }
+
+    // 저장된 인증키 삭제
+    function deleteKey() {
+      localStorage.removeItem(KEY_STORAGE);
+      document.getElementById("serviceKey").value = "";
+
+      const status = document.getElementById("keyStatus");
+      status.style.color = "#16803c";
+      status.textContent = "저장된 인증키를 삭제했습니다.";
+
+      document.getElementById("result").textContent =
+        "먼저 인증키를 설정해 주세요.";
+    }
+
+    // 버스 도착정보 조회
+    async function searchBus() {
+      const keyInput = document
+        .getElementById("serviceKey")
+        .value.trim();
+
+      const savedKey = localStorage.getItem(KEY_STORAGE);
+      const serviceKey = savedKey || keyInput;
+
+      const arsId = document
+        .getElementById("arsId")
+        .value.trim();
 
       const result = document.getElementById("result");
       const button = document.getElementById("searchButton");
 
-      if (!serviceKey || !arsId) {
-        result.textContent = "인증키와 정류소 고유번호를 입력해 주세요.";
+      if (!serviceKey) {
+        result.textContent =
+          "먼저 인증키를 입력하고 저장해 주세요.";
+        return;
+      }
+
+      if (!arsId) {
+        result.textContent = "정류소 고유번호를 입력해 주세요.";
         return;
       }
 
       if (!/^\d+$/.test(arsId)) {
-        result.textContent = "정류소 고유번호는 숫자로 입력해 주세요.";
+        result.textContent =
+          "정류소 고유번호는 숫자로 입력해 주세요.";
         return;
       }
 
@@ -164,24 +316,26 @@
         }
 
         const xmlText = await response.text();
+
         const xml = new DOMParser().parseFromString(
           xmlText,
           "application/xml"
         );
 
         if (xml.querySelector("parsererror")) {
-          throw new Error("응답 데이터를 XML로 읽을 수 없습니다.");
+          throw new Error("XML_PARSE_ERROR");
         }
 
         const headerCode =
           xml.getElementsByTagName("headerCd")[0]?.textContent;
 
-        if (headerCode && headerCode !== "0") {
-          const message =
-            xml.getElementsByTagName("headerMsg")[0]?.textContent ||
-            "API 요청을 처리하지 못했습니다.";
+        const headerMessage =
+          xml.getElementsByTagName("headerMsg")[0]?.textContent;
 
-          result.textContent = "조회 실패: " + message;
+        if (headerCode && headerCode !== "0") {
+          result.textContent =
+            "서울시 API 오류: " +
+            (headerMessage || headerCode);
           return;
         }
 
@@ -191,14 +345,15 @@
 
         if (items.length === 0) {
           result.textContent =
-            "도착정보가 없습니다. 정류소 번호와 인증키를 확인해 주세요.";
+            "도착정보가 없습니다. 정류소 번호를 확인하거나 " +
+            "다른 시간에 다시 조회해 주세요.";
           return;
         }
 
-        result.innerHTML = "";
+        result.replaceChildren();
 
         items.forEach(item => {
-          const getValue = (tag) =>
+          const getValue = tag =>
             item.getElementsByTagName(tag)[0]?.textContent || "-";
 
           const card = document.createElement("div");
@@ -210,11 +365,13 @@
 
           const first = document.createElement("div");
           first.className = "message";
-          first.textContent = "첫 번째 도착: " + getValue("arrmsg1");
+          first.textContent =
+            "첫 번째 도착: " + getValue("arrmsg1");
 
           const second = document.createElement("div");
           second.className = "message";
-          second.textContent = "두 번째 도착: " + getValue("arrmsg2");
+          second.textContent =
+            "두 번째 도착: " + getValue("arrmsg2");
 
           card.append(number, first, second);
           result.appendChild(card);
@@ -223,19 +380,41 @@
       } catch (error) {
         console.error(error);
 
-        result.textContent =
-          "조회에 실패했습니다. 인증키와 정류소 번호를 확인해 주세요. " +
-          "계속 실패하면 브라우저의 HTTPS/CORS 제한 때문일 수 있습니다.";
+        if (error.message === "XML_PARSE_ERROR") {
+          result.textContent =
+            "API 응답을 해석하지 못했습니다. 인증키와 API 응답 형식을 확인해 주세요.";
+        } else if (error instanceof TypeError) {
+          result.textContent =
+            "API 서버에 연결하지 못했습니다. HTTPS 또는 CORS 제한일 수 있습니다. " +
+            "인증키를 입력해도 이 제한은 해결되지 않으며, 중계 서버가 필요할 수 있습니다.";
+        } else {
+          result.textContent =
+            "조회 중 오류가 발생했습니다: " + error.message;
+        }
       } finally {
         button.disabled = false;
       }
     }
 
-    document.getElementById("arsId").addEventListener("keydown", event => {
-      if (event.key === "Enter") {
-        searchBus();
+    // Enter 키로 조회
+    document.getElementById("arsId").addEventListener(
+      "keydown",
+      event => {
+        if (event.key === "Enter") {
+          searchBus();
+        }
       }
-    });
+    );
+
+    // 인증키 입력란에서도 Enter를 누르면 저장
+    document.getElementById("serviceKey").addEventListener(
+      "keydown",
+      event => {
+        if (event.key === "Enter") {
+          saveKey();
+        }
+      }
+    );
   </script>
 </body>
 </html>
