@@ -4,7 +4,7 @@
  */
 
 // 반드시 본인의 GAS 웹앱 배포 URL로 교체하세요.
-const GAS_URL = '여기에_GAS_웹앱_URL을_입력';
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbznM1-xUCUUUEcAun5b8HCVgPjbrrc3bzx_fpDggh7XcJGC72sPIXNJxcjBnY1JYQFn/exec';
 
 const form = document.getElementById('guestbook-form');
 const nameInput = document.getElementById('name');
